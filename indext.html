@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="th">"$BROWSER" kids\ letter-1.html
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Kids Letters – Single File</title>
+<style>
+  :root{--primary:#ff7ac8;--secondary:#7dd3fc;--ok:#22c55e;--no:#ef4444}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Thai";background:#fff6fb}
+  .app{max-width:820px;margin:16px auto;background:#fff;border:2px solid #ffd7ec;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.06);overflow:hidden}
+  header{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;background:linear-gradient(90deg,var(--primary),#ffa4de 40%,var(--secondary));color:#1b1030}
+  .bar{height:8px;background:#ffe1f1;position:relative}
+  .bar>span{position:absolute;inset:0 0 0 0;width:0;background:linear-gradient(90deg,#22c55e,#facc15);transition:width .35s}
+  main{padding:14px}
+  .card{background:#fff;border:2px solid #ffd7ec;border-radius:16px;padding:14px}
+  .puzzle{display:flex;flex-wrap:wrap;gap:8px;min-height:54px;margin-top:10px}
+  .slot{min-width:44px;min-height:44px;border-radius:12px;display:grid;place-items:center;font-weight:900;font-size:22px;border:2px solid #ffd7ec;box-shadow:0 4px 0 #ffc0e5}
+  .slot.space{opacity:.35;border-style:dashed;min-width:24px;box-shadow:none}
+  .slot.filled{background:#e0f2fe;border-color:#93c5fd;box-shadow:0 4px 0 #7dd3fc}
+  .slot.correct{outline:3px solid var(--ok)}
+  .slot.wrong{outline:3px solid var(--no)}
+  .kb{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px}
+  .key{border:none;border-radius:12px;padding:12px 0;font-size:18px;font-weight:900;background:#fff;border:2px solid #c7f9cc;box-shadow:0 6px 0 #a7f3d0}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .btn{border:none;border-radius:12px;padding:12px 14px;font-weight:900}
+  .hint{background:#fef3c7;border:2px solid #fde68a}
+  .reveal{background:#fee2e2;border:2px solid #fecaca}
+  .reset{background:#e0e7ff;border:2px solid #c7d2fe}
+  .next{background:#a7f3d0;border:2px solid #6ee7b7}
+  .muted{color:#64748b}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div style="font-weight:900">Kids Letters</div>
+    <div>คะแนน: <b id="score">0</b></div>
+  </header>
+  <div class="bar"><span id="bar"></span></div>
+  <main>
+    <div class="card" id="card">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="level" style="background:#fff3c4;border:2px solid #fde68a;border-radius:10px;padding:4px 8px;font-weight:800">ด่าน 1</div>
+        <div id="progress" class="muted" style="margin-left:auto">0/0</div>
+      </div>
+      <div id="thai" class="muted" style="margin-top:6px">ความหมายไทย</div>
+      <div id="eng" style="color:#a855f7;font-weight:800;margin-top:4px">English hint</div>
+      <div class="puzzle" id="board"></div>
+      <div class="kb" id="kb"></div>
+      <div class="row">
+        <button class="btn hint" id="btnHint">Hint</button>
+        <button class="btn reveal" id="btnReveal">เฉลย</button>
+        <button class="btn reset" id="btnReset">ลบทั้งหมด</button>
+        <button class="btn next" id="btnNext" disabled>ถัดไป ▶</button>
+        <button class="btn" id="btnCheck" style="background:#ffedd5;border:2px solid #fdba74">ตรวจคำตอบ</button>
+      </div>
+      <div id="hintBox" style="display:none;margin-top:8px;background:#fff8dc;border:2px dashed #facc15;border-radius:12px;padding:10px">Hint: <b id="hintText"></b></div>
+      <div id="msg" style="font-weight:900;margin-top:8px"></div>
+    </div>
+    <div id="sum" style="display:none">
+      <h2>สรุปผล</h2>
+      <p>คุณได้ <b id="final">0</b> คะแนน จาก <b id="total">0</b> ด่าน</p>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ข้อมูลคำศัพท์ (10 คำ) */
+const WORDS = [
+  { w:"illness",      th:"เจ็บป่วย",     en:"Sick; with bad health" },
+  { w:"stomachache",  th:"ปวดท้อง",     en:"Pain in the stomach" },
+  { w:"cough",        th:"ไอ",           en:"Send out air noisily" },
+  { w:"fever",        th:"เป็นไข้",      en:"High body temperature" },
+  { w:"sore throat",  th:"เจ็บคอ",       en:"Pain in the throat" },
+  { w:"sprain",       th:"เคล็ดขัดยอก", en:"Twist your arm/leg; hurt" },
+  { w:"medicine",     th:"ยา",           en:"Pills to get better" },
+  { w:"rest",         th:"พักผ่อน",      en:"Sleep; being still" },
+  { w:"runny nose",   th:"น้ำมูกไหล",    en:"Liquid from your nose" },
+  { w:"cold",         th:"เป็นหวัด",     en:"Fever and cough" }
+];
+
+let order = shuffle(WORDS.map((_,i)=>i)), iQ=0, score=0, usedHint=false;
+let current, mask, filled=[], inputsOrder=[];
+const $=id=>document.getElementById(id);
+const clean=s=>s.replace(/\s+/g,'').toLowerCase();
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function isLetter(c){return /[a-z]/i.test(c);}
+function makeMask(word){
+  const chars=[...word], idxs=chars.map((c,i)=>isLetter(c)?i:null).filter(i=>i!==null);
+  const first=idxs[0], last=idxs[idxs.length-1];
+  let hide=Math.max(2, Math.round(idxs.length*0.5));
+  const set=new Set(shuffle(idxs.filter(i=>i!==first&&i!==last)).slice(0,hide));
+  return chars.map((c,i)=>isLetter(c)?set.has(i):false);
+}
+function buildKeyboard(){
+  const letters=[...new Set([...current.w.replace(/\s/g,'').toLowerCase()])];
+  const all='abcdefghijklmnopqrstuvwxyz'.split('');
+  const extra=shuffle(all.filter(c=>!letters.includes(c))).slice(0, Math.max(4, 12-letters.length));
+  const keys=shuffle([...letters, ...extra]).slice(0, Math.max(letters.length+4, 12));
+  $("kb").innerHTML='';
+  keys.forEach(ch=>{
+    const b=document.createElement('button');
+    b.className='key'; b.textContent=ch.toUpperCase();
+    b.onclick=()=>place(ch);
+    $("kb").appendChild(b);
+  });
+}
+function place(ch){
+  const p=inputsOrder.findIndex(ix=>filled[ix]===null);
+  if(p===-1) return;
+  const ix=inputsOrder[p]; filled[ix]=ch;
+  const el=$("board").children[ix]; el.textContent=ch.toUpperCase(); el.classList.add('filled');
+}
+function resetFilled(){
+  inputsOrder.forEach(ix=>{ filled[ix]=null; const el=$("board").children[ix]; el.textContent=''; el.classList.remove('filled','wrong','correct'); });
+  $("msg").textContent='';
+}
+function render(){
+  usedHint=false; $("hintBox").style.display='none'; $("msg").textContent='';
+  current=WORDS[order[iQ]];
+  $("level").textContent=`ด่าน ${iQ+1}`; $("progress").textContent=`${iQ+1}/${WORDS.length}`;
+  $("bar").style.width=`${(iQ)/WORDS.length*100}%`;
+  $("thai").textContent=`ความหมายไทย: ${current.th}`;
+  $("eng").textContent=`English: ${current.en}`;
+  $("hintText").textContent = `${current.th} (${current.en})`;
+  mask=makeMask(current.w); $("board").innerHTML=''; filled=[]; inputsOrder=[];
+  [...current.w].forEach((ch,i)=>{
+    const d=document.createElement('div');
+    if(ch===' '){ d.className='slot space'; $("board").appendChild(d); filled[i]=' '; return; }
+    d.className='slot';
+    if(mask[i]){ d.textContent=''; inputsOrder.push(i); filled[i]=null; }
+    else{ d.textContent=ch.toUpperCase(); filled[i]=ch.toLowerCase(); d.style.background='#fff0fb'; d.style.borderColor='#ffc0e5'; d.style.boxShadow='0 4px 0 #ffb3e0'; }
+    $("board").appendChild(d);
+  });
+  buildKeyboard(); $("btnNext").disabled=true;
+}
+function check(){
+  const ans=filled.map(v=>v??'').join('').toLowerCase();
+  if(clean(ans)!==clean(current.w)){
+    $("msg").textContent='ยังไม่ถูก ลองอีกครั้ง'; $("msg").style.color='#ef4444';
+    $("board").querySelectorAll('.slot').forEach((el,k)=>{ if(mask[k] && filled[k]!==null){ el.classList.add('wrong'); setTimeout(()=>el.classList.remove('wrong'),300);} });
+    return;
+  }
+  $("msg").textContent='ถูกต้อง!'; $("msg").style.color='#22c55e';
+  $("board").querySelectorAll('.slot').forEach((el,k)=>{ if(mask[k]) el.classList.add('correct'); });
+  $("btnNext").disabled=false;
+  score += usedHint?0.5:1; $("score").textContent=score.toFixed(1);
+}
+function reveal(){
+  inputsOrder.forEach(ix=>{ const ch=current.w[ix].toLowerCase(); filled[ix]=ch; const el=$("board").children[ix]; el.textContent=ch.toUpperCase(); el.classList.add('filled','correct'); });
+  $("msg").textContent=`เฉลย: ${current.w}`; $("msg").style.color='#22c55e'; $("btnNext").disabled=false;
+}
+$("btnHint").onclick=()=>{ usedHint=true; $("hintBox").style.display = $("hintBox").style.display==='none'?'block':'none'; };
+$("btnReveal").onclick=reveal; $("btnReset").onclick=resetFilled; $("btnCheck").onclick=check;
+$("btnNext").onclick=()=>{ if(iQ<WORDS.length-1){ iQ++; render(); } else { document.getElementById('card').style.display='none'; document.getElementById('sum').style.display='block'; $("final").textContent=score.toFixed(1); $("total").textContent=WORDS.length; $("bar").style.width='100%'; } };
+render();
+</script>
+</body>
+</html>
